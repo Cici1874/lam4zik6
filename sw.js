@@ -1,4 +1,4 @@
-const CACHE_NAME = 'linxi-credits-v2.0.1';
+const CACHE_NAME = 'linxi-credits-v2.0.3';
 const ASSETS = [
   './',
   './index.html',

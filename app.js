@@ -2212,8 +2212,7 @@ function GuideModal({
     style: {
       width: "100%",
       display: "block",
-      objectFit: "cover",
-      maxHeight: 320
+      objectFit: "contain"
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
