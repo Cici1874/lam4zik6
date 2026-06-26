@@ -11,7 +11,7 @@ const {
 // ============================================================
 
 // --- Morandi Palette ---
-const C = {
+const LIGHT = {
   bg: "#f0ece4",
   card: "#e8e2d8",
   cardHover: "#dfd8cb",
@@ -35,6 +35,64 @@ const C = {
   link: "#7a6e63",
   linkHover: "#5a4f44"
 };
+const DARK = {
+  bg: "#2a2725",
+  card: "#353130",
+  cardHover: "#3e3a38",
+  border: "#4a4543",
+  text: "#d8d2ca",
+  textMid: "#a39d93",
+  textLight: "#7a746b",
+  accent: "#b5a99b",
+  accentSoft: "#8b7e74",
+  tag: "#4a4543",
+  tagText: "#c5b9a8",
+  pink: "#a08078",
+  green: "#7a8a77",
+  blue: "#7a8e9a",
+  lavender: "#8a7f92",
+  white: "#333030",
+  shadow: "rgba(0,0,0,0.2)",
+  pillBg: "#3e3a38",
+  pillActive: "#b5a99b",
+  pillActiveText: "#2a2725",
+  link: "#c5b9a8",
+  linkHover: "#d8d2ca"
+};
+let C = {
+  ...LIGHT
+};
+const THEME_KEY = "linxi-theme";
+
+// Initialize C from localStorage immediately (before first render)
+try {
+  if (typeof localStorage !== "undefined" && localStorage.getItem(THEME_KEY) === "dark") {
+    Object.assign(C, DARK);
+  }
+} catch (e) {}
+function useTheme() {
+  const [dark, setDark] = useState(() => {
+    try {
+      return localStorage.getItem(THEME_KEY) === "dark";
+    } catch (e) {
+      return false;
+    }
+  });
+  // renderKey forces full re-render of entire tree when theme changes
+  const [renderKey, setRenderKey] = useState(0);
+  const toggle = useCallback(() => {
+    setDark(prev => {
+      const next = !prev;
+      Object.assign(C, next ? DARK : LIGHT);
+      try {
+        localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+      } catch (e) {}
+      return next;
+    });
+    setRenderKey(k => k + 1);
+  }, []);
+  return [dark, toggle, renderKey];
+}
 const SOURCE_LABELS = {
   "日": {
     label: "日本",
@@ -78,6 +136,9 @@ const TABS = [{
   id: "cross",
   label: "交叉查詢"
 }, {
+  id: "compare",
+  label: "歌手對比"
+}, {
   id: "stats",
   label: "統計"
 }];
@@ -92,6 +153,29 @@ function toSimplified(str) {
 function matchQuery(text, query) {
   if (!query) return true;
   return toSimplified(text).includes(toSimplified(query));
+}
+
+// Highlight matching substring
+function Highlight({
+  text,
+  query
+}) {
+  if (!query || !text) return text || "";
+  const simpText = toSimplified(text);
+  const simpQuery = toSimplified(query);
+  const idx = simpText.indexOf(simpQuery);
+  if (idx === -1) return text;
+  const before = text.slice(0, idx);
+  const match = text.slice(idx, idx + query.length);
+  const after = text.slice(idx + query.length);
+  return /*#__PURE__*/React.createElement(React.Fragment, null, before, /*#__PURE__*/React.createElement("mark", {
+    style: {
+      background: C.tag,
+      color: C.text,
+      borderRadius: 2,
+      padding: "0 1px"
+    }
+  }, match), after);
 }
 
 // ============================================================
@@ -284,6 +368,16 @@ function Breadcrumb({
   onNavigate
 }) {
   if (!stack || stack.length === 0) return null;
+  const isMobile = useIsMobile();
+
+  // On mobile, if more than 3 levels, show: first … prev › current
+  let display = stack;
+  if (isMobile && stack.length > 3) {
+    display = [stack[0], {
+      label: "…",
+      ellipsis: true
+    }, stack[stack.length - 2], stack[stack.length - 1]];
+  }
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -294,30 +388,44 @@ function Breadcrumb({
       fontSize: 13,
       color: C.textMid
     }
-  }, stack.map((item, i) => /*#__PURE__*/React.createElement("span", {
-    key: i,
-    style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 4
+  }, display.map((item, i) => {
+    // Map display index back to real stack index for navigation
+    let realIdx;
+    if (isMobile && stack.length > 3) {
+      if (i === 0) realIdx = 0;else if (item.ellipsis) realIdx = -1;else if (i === display.length - 2) realIdx = stack.length - 2;else realIdx = stack.length - 1;
+    } else {
+      realIdx = i;
     }
-  }, i > 0 && /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: C.textLight
-    }
-  }, "›"), i < stack.length - 1 ? /*#__PURE__*/React.createElement("span", {
-    onClick: () => onNavigate(i),
-    style: {
-      color: C.link,
-      cursor: "pointer",
-      borderBottom: `1px dashed ${C.border}`
-    }
-  }, item.label) : /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: C.text,
-      fontWeight: 600
-    }
-  }, item.label))));
+    const isLast = i === display.length - 1;
+    return /*#__PURE__*/React.createElement("span", {
+      key: i,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 4
+      }
+    }, i > 0 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.textLight
+      }
+    }, "›"), item.ellipsis ? /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.textLight
+      }
+    }, "…") : !isLast ? /*#__PURE__*/React.createElement("span", {
+      onClick: () => realIdx >= 0 && onNavigate(realIdx),
+      style: {
+        color: C.link,
+        cursor: "pointer",
+        borderBottom: `1px dashed ${C.border}`
+      }
+    }, item.label) : /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.text,
+        fontWeight: 600
+      }
+    }, item.label));
+  }));
 }
 
 // ============================================================
@@ -336,6 +444,18 @@ const tdStyle = {
   padding: "8px 10px",
   color: C.text
 };
+const backBtnStyle = {
+  background: "none",
+  border: "none",
+  color: C.accent,
+  fontSize: 13,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  padding: "4px 0",
+  marginBottom: 8,
+  display: "block",
+  fontWeight: 500
+};
 function SongTable({
   songs,
   data,
@@ -346,6 +466,8 @@ function SongTable({
   onClickComposer,
   onClickYear
 }) {
+  const isMobile = useIsMobile();
+  const [copied, setCopied] = useState(false);
   if (!songs || songs.length === 0) {
     return /*#__PURE__*/React.createElement("div", {
       style: {
@@ -357,7 +479,122 @@ function SongTable({
     }, "選擇項目查看作品");
   }
   const sorted = [...songs].sort((a, b) => (data[a].y || 0) - (data[b].y || 0));
-  return /*#__PURE__*/React.createElement("div", {
+  const handleCopy = () => {
+    const lines = sorted.map(idx => {
+      const s = data[idx];
+      const parts = [];
+      if (showYear) parts.push(s.y);
+      parts.push(s.t);
+      if (showSinger) parts.push(s.s);
+      if (showComposer) parts.push(s.c || "—");
+      return parts.join("\t");
+    });
+    const header = [];
+    if (showYear) header.push("年份");
+    header.push("歌曲");
+    if (showSinger) header.push("歌手");
+    if (showComposer) header.push("作曲");
+    const text = header.join("\t") + "\n" + lines.join("\n");
+    try {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } catch (e) {}
+  };
+  const copyBtn = /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "flex-end",
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleCopy,
+    style: {
+      background: "none",
+      border: `1px solid ${C.border}`,
+      borderRadius: 6,
+      padding: "3px 10px",
+      cursor: "pointer",
+      color: copied ? C.green : C.textLight,
+      fontSize: 11,
+      fontFamily: "inherit",
+      transition: "all .15s"
+    }
+  }, copied ? "已複製 ✓" : `複製 ${sorted.length} 首`));
+
+  // Mobile: card layout
+  if (isMobile) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        maxHeight: "70vh",
+        overflowY: "auto"
+      }
+    }, copyBtn, sorted.map((idx, i) => {
+      const s = data[idx];
+      const src = s.r && SOURCE_LABELS[s.r];
+      return /*#__PURE__*/React.createElement("div", {
+        key: i,
+        style: {
+          padding: "10px 14px",
+          background: C.white,
+          borderRadius: 8,
+          marginBottom: 6,
+          border: `1px solid ${C.border}`
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 8
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 14,
+          color: C.text,
+          fontWeight: 500,
+          flex: 1
+        }
+      }, s.t, src && /*#__PURE__*/React.createElement(Tag, {
+        label: src.label,
+        color: src.color
+      })), showYear && /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 12,
+          flexShrink: 0
+        }
+      }, onClickYear ? /*#__PURE__*/React.createElement(ClickableName, {
+        name: String(s.y),
+        onClick: v => onClickYear(Number(v)),
+        color: C.textLight
+      }) : /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: C.textLight
+        }
+      }, s.y))), /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 12,
+          color: C.textMid,
+          marginTop: 4,
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap"
+        }
+      }, showSinger && /*#__PURE__*/React.createElement("span", null, "歌手：", /*#__PURE__*/React.createElement(ClickableName, {
+        name: s.s,
+        onClick: onClickSinger,
+        color: C.textMid
+      })), showComposer && /*#__PURE__*/React.createElement("span", null, "曲：", s.c ? /*#__PURE__*/React.createElement(ClickableName, {
+        name: s.c,
+        onClick: onClickComposer,
+        color: C.textMid
+      }) : "—")));
+    }));
+  }
+
+  // Desktop: table layout
+  return /*#__PURE__*/React.createElement("div", null, copyBtn, /*#__PURE__*/React.createElement("div", {
     style: {
       maxHeight: 480,
       overflowY: "auto",
@@ -441,7 +678,7 @@ function SongTable({
         color: C.textLight
       }
     }, "—")));
-  }))));
+  })))));
 }
 
 // ============================================================
@@ -510,15 +747,40 @@ function useNavStack() {
 }
 
 // ============================================================
+// Responsive: detect mobile
+// ============================================================
+function useIsMobile(breakpoint = 640) {
+  const [mobile, setMobile] = useState(() => typeof window !== "undefined" ? window.innerWidth < breakpoint : false);
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < breakpoint);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [breakpoint]);
+  return mobile;
+}
+
+// ============================================================
 // Tab: 按歌手
 // ============================================================
 function TabSinger({
   data,
-  index
+  index,
+  jumpTo,
+  clearJump
 }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const nav = useNavStack();
+  const isMobile = useIsMobile();
+
+  // Handle jumpTo from GlobalSearch or Stats
+  useEffect(() => {
+    if (jumpTo && jumpTo.name && index.singers[jumpTo.name]) {
+      setSelected(jumpTo.name);
+      nav.clear();
+      if (clearJump) clearJump();
+    }
+  }, [jumpTo]);
   const filtered = useMemo(() => {
     const all = sortedEntries(index.singers);
     if (!search.trim()) return all;
@@ -528,11 +790,14 @@ function TabSinger({
   const handleSelect = name => {
     setSelected(name);
     nav.clear();
+    writeHash({
+      tab: "singer",
+      s: name
+    });
   };
   const handleClickComposer = name => {
     if (index.composers[name]) {
       if (nav.stack.length === 0 && selected) {
-        // Push the initial singer first, then the composer
         nav.push("singer", selected);
       }
       nav.push("composer", name);
@@ -551,18 +816,18 @@ function TabSinger({
       nav.push("year", String(year));
     }
   };
-
-  // If nav stack is active, show drill-down view
   const showDrillDown = nav.current !== null;
+  const showResults = selected || showDrillDown;
   return /*#__PURE__*/React.createElement("div", {
-    style: {
+    style: isMobile ? {
+      minHeight: 300
+    } : {
       display: "flex",
       gap: 16,
-      minHeight: 400,
-      flexWrap: "wrap"
+      minHeight: 400
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
+  }, (!isMobile || !showResults) && /*#__PURE__*/React.createElement("div", {
+    style: isMobile ? {} : {
       width: 260,
       flexShrink: 0
     }
@@ -574,12 +839,20 @@ function TabSinger({
     entries: filtered,
     onSelect: handleSelect,
     selected: selected
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
+  })), showResults && /*#__PURE__*/React.createElement("div", {
+    style: isMobile ? {
+      marginTop: 0
+    } : {
       flex: 1,
       minWidth: 0
     }
-  }, showDrillDown ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Breadcrumb, {
+  }, isMobile && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setSelected(null);
+      nav.clear();
+    },
+    style: backBtnStyle
+  }, "← 返回列表"), showDrillDown ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Breadcrumb, {
     stack: nav.stack,
     onNavigate: idx => nav.navigateTo(idx)
   }), /*#__PURE__*/React.createElement(DrillDownView, {
@@ -610,11 +883,21 @@ function TabSinger({
 // ============================================================
 function TabComposer({
   data,
-  index
+  index,
+  jumpTo,
+  clearJump
 }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const nav = useNavStack();
+  const isMobile = useIsMobile();
+  useEffect(() => {
+    if (jumpTo && jumpTo.name && index.composers[jumpTo.name]) {
+      setSelected(jumpTo.name);
+      nav.clear();
+      if (clearJump) clearJump();
+    }
+  }, [jumpTo]);
   const filtered = useMemo(() => {
     const all = sortedEntries(index.composers);
     if (!search.trim()) return all;
@@ -624,6 +907,10 @@ function TabComposer({
   const handleSelect = name => {
     setSelected(name);
     nav.clear();
+    writeHash({
+      tab: "composer",
+      c: name
+    });
   };
   const handleClickSinger = name => {
     if (index.singers[name]) {
@@ -647,15 +934,17 @@ function TabComposer({
     }
   };
   const showDrillDown = nav.current !== null;
+  const showResults = selected || showDrillDown;
   return /*#__PURE__*/React.createElement("div", {
-    style: {
+    style: isMobile ? {
+      minHeight: 300
+    } : {
       display: "flex",
       gap: 16,
-      minHeight: 400,
-      flexWrap: "wrap"
+      minHeight: 400
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
+  }, (!isMobile || !showResults) && /*#__PURE__*/React.createElement("div", {
+    style: isMobile ? {} : {
       width: 260,
       flexShrink: 0
     }
@@ -667,12 +956,20 @@ function TabComposer({
     entries: filtered,
     onSelect: handleSelect,
     selected: selected
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
+  })), showResults && /*#__PURE__*/React.createElement("div", {
+    style: isMobile ? {
+      marginTop: 0
+    } : {
       flex: 1,
       minWidth: 0
     }
-  }, showDrillDown ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Breadcrumb, {
+  }, isMobile && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setSelected(null);
+      nav.clear();
+    },
+    style: backBtnStyle
+  }, "← 返回列表"), showDrillDown ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Breadcrumb, {
     stack: nav.stack,
     onNavigate: idx => nav.navigateTo(idx)
   }), /*#__PURE__*/React.createElement(DrillDownView, {
@@ -707,6 +1004,7 @@ function TabYear({
 }) {
   const [selected, setSelected] = useState(null);
   const nav = useNavStack();
+  const isMobile = useIsMobile();
   const yearList = useMemo(() => Object.entries(index.years).map(([y, ids]) => [Number(y), ids]).sort((a, b) => b[0] - a[0]), [index.years]);
   const songs = selected !== null ? index.years[selected] : null;
   const handleSelect = year => {
@@ -735,21 +1033,23 @@ function TabYear({
     }
   };
   const showDrillDown = nav.current !== null;
+  const showResults = selected !== null || showDrillDown;
   return /*#__PURE__*/React.createElement("div", {
-    style: {
+    style: isMobile ? {
+      minHeight: 300
+    } : {
       display: "flex",
       gap: 16,
-      minHeight: 400,
-      flexWrap: "wrap"
+      minHeight: 400
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
+  }, (!isMobile || !showResults) && /*#__PURE__*/React.createElement("div", {
+    style: isMobile ? {} : {
       width: 200,
       flexShrink: 0
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      maxHeight: 480,
+      maxHeight: isMobile ? 320 : 480,
       overflowY: "auto",
       border: `1px solid ${C.border}`,
       borderRadius: 8,
@@ -787,12 +1087,20 @@ function TabYear({
         fontSize: 12
       }
     }, ids.length, " 首"));
-  }))), /*#__PURE__*/React.createElement("div", {
-    style: {
+  }))), showResults && /*#__PURE__*/React.createElement("div", {
+    style: isMobile ? {
+      marginTop: 0
+    } : {
       flex: 1,
       minWidth: 0
     }
-  }, showDrillDown ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Breadcrumb, {
+  }, isMobile && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setSelected(null);
+      nav.clear();
+    },
+    style: backBtnStyle
+  }, "← 返回列表"), showDrillDown ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Breadcrumb, {
     stack: nav.stack,
     onNavigate: idx => nav.navigateTo(idx)
   }), /*#__PURE__*/React.createElement(DrillDownView, {
@@ -827,14 +1135,19 @@ function PillSelector({
   onSelect,
   index
 }) {
-  return /*#__PURE__*/React.createElement("div", {
+  const isMobile = useIsMobile();
+  const [expanded, setExpanded] = useState(false);
+  const COLLAPSE_COUNT = 15;
+  const shouldCollapse = isMobile && items.length > COLLAPSE_COUNT && !expanded;
+  const visible = shouldCollapse ? items.slice(0, COLLAPSE_COUNT) : items;
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexWrap: "wrap",
       gap: 6,
       marginBottom: 8
     }
-  }, items.map(name => {
+  }, visible.map(name => {
     const isActive = selected === name;
     const count = index[name] ? index[name].length : 0;
     return /*#__PURE__*/React.createElement("button", {
@@ -860,7 +1173,30 @@ function PillSelector({
         opacity: 0.7
       }
     }, count));
-  }));
+  }), shouldCollapse && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setExpanded(true),
+    style: {
+      padding: "5px 12px",
+      borderRadius: 16,
+      border: `1px dashed ${C.border}`,
+      background: "transparent",
+      color: C.textMid,
+      fontSize: 12,
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, "展開全部 (", items.length, ")")), isMobile && expanded && items.length > COLLAPSE_COUNT && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setExpanded(false),
+    style: {
+      background: "none",
+      border: "none",
+      color: C.textLight,
+      fontSize: 12,
+      cursor: "pointer",
+      fontFamily: "inherit",
+      marginBottom: 8
+    }
+  }, "收起 ▲"));
 }
 function MiniTab({
   active,
@@ -1159,11 +1495,318 @@ function TabCross({
 }
 
 // ============================================================
-// Tab: 統計
+// Tab: 歌手對比
+// ============================================================
+function TabCompare({
+  data,
+  index
+}) {
+  const [singerA, setSingerA] = useState(null);
+  const [singerB, setSingerB] = useState(null);
+  const [qA, setQA] = useState("");
+  const [qB, setQB] = useState("");
+  const [modeA, setModeA] = useState("hot");
+  const [modeB, setModeB] = useState("hot");
+  const isMobile = useIsMobile();
+  const otherSingers = useMemo(() => sortedEntries(index.singers).filter(([name]) => !HOT_SINGERS.includes(name)), [index.singers]);
+  const searchA = useMemo(() => {
+    if (!qA.trim()) return otherSingers.slice(0, 20);
+    return otherSingers.filter(([n]) => matchQuery(n, qA.trim())).slice(0, 20);
+  }, [qA, otherSingers]);
+  const searchB = useMemo(() => {
+    if (!qB.trim()) return otherSingers.slice(0, 20);
+    return otherSingers.filter(([n]) => matchQuery(n, qB.trim())).slice(0, 20);
+  }, [qB, otherSingers]);
+  const pickA = name => {
+    setSingerA(name === singerA ? null : name);
+    setQA(name || "");
+  };
+  const pickB = name => {
+    setSingerB(name === singerB ? null : name);
+    setQB(name || "");
+  };
+  const comparison = useMemo(() => {
+    if (!singerA || !singerB) return null;
+    const songsA = index.singers[singerA] || [];
+    const songsB = index.singers[singerB] || [];
+
+    // Get composers for each
+    const composersA = {};
+    songsA.forEach(i => {
+      const c = data[i].c;
+      if (c) composersA[c] = (composersA[c] || 0) + 1;
+    });
+    const composersB = {};
+    songsB.forEach(i => {
+      const c = data[i].c;
+      if (c) composersB[c] = (composersB[c] || 0) + 1;
+    });
+
+    // Find shared
+    const shared = Object.keys(composersA).filter(c => composersB[c]);
+    const onlyA = Object.keys(composersA).filter(c => !composersB[c]);
+    const onlyB = Object.keys(composersB).filter(c => !composersA[c]);
+
+    // Sort shared by total count
+    shared.sort((a, b) => composersA[b] + composersB[b] - (composersA[a] + composersB[a]));
+    onlyA.sort((a, b) => composersA[b] - composersA[a]);
+    onlyB.sort((a, b) => composersB[b] - composersB[a]);
+    return {
+      songsA,
+      songsB,
+      composersA,
+      composersB,
+      shared,
+      onlyA,
+      onlyB
+    };
+  }, [singerA, singerB, index, data]);
+  const renderPicker = (label, singer, setSinger, q, setQ, mode, setMode, searchResults, pick) => /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 8,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: C.textMid,
+      fontWeight: 600
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement(MiniTab, {
+    active: mode === "hot",
+    onClick: () => setMode("hot"),
+    label: "常見"
+  }), /*#__PURE__*/React.createElement(MiniTab, {
+    active: mode === "search",
+    onClick: () => setMode("search"),
+    label: "其他"
+  })), singer && /*#__PURE__*/React.createElement("span", {
+    style: {
+      marginLeft: "auto",
+      fontSize: 12,
+      color: C.accent,
+      cursor: "pointer"
+    },
+    onClick: () => {
+      setSinger(null);
+      setQ("");
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, singer), " ✕")), mode === "hot" ? /*#__PURE__*/React.createElement(PillSelector, {
+    items: HOT_SINGERS,
+    selected: singer,
+    onSelect: pick,
+    index: index.singers
+  }) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SearchInput, {
+    value: q,
+    onChange: v => {
+      setQ(v);
+      if (singer) setSinger(null);
+    },
+    placeholder: "搜尋歌手…"
+  }), !singer && q.trim() && searchResults.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      background: C.white,
+      maxHeight: 150,
+      overflowY: "auto"
+    }
+  }, searchResults.map(([name, ids]) => /*#__PURE__*/React.createElement("div", {
+    key: name,
+    onClick: () => pick(name),
+    style: {
+      padding: "7px 12px",
+      cursor: "pointer",
+      fontSize: 13,
+      display: "flex",
+      justifyContent: "space-between",
+      borderBottom: `1px solid ${C.border}`
+    },
+    onMouseEnter: e => e.currentTarget.style.background = C.cardHover,
+    onMouseLeave: e => e.currentTarget.style.background = "transparent"
+  }, /*#__PURE__*/React.createElement("span", null, name), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.textLight
+    }
+  }, ids.length))))));
+  return /*#__PURE__*/React.createElement("div", null, renderPicker("歌手 A", singerA, setSingerA, qA, setQA, modeA, setModeA, searchA, pickA), renderPicker("歌手 B", singerB, setSingerB, qB, setQB, modeB, setModeB, searchB, pickB), comparison && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 16,
+      padding: 14,
+      background: C.card,
+      borderRadius: 8,
+      fontSize: 13,
+      color: C.textMid
+    }
+  }, /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: C.text
+    }
+  }, singerA), "（", comparison.songsA.length, " 首）vs ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: C.text
+    }
+  }, singerB), "（", comparison.songsB.length, " 首）"), comparison.shared.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: C.text,
+      marginBottom: 8
+    }
+  }, "共同作曲人（", comparison.shared.length, "）"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      background: C.white,
+      maxHeight: 300,
+      overflowY: "auto"
+    }
+  }, comparison.shared.map(c => /*#__PURE__*/React.createElement("div", {
+    key: c,
+    style: {
+      padding: "8px 12px",
+      borderBottom: `1px solid ${C.border}`,
+      fontSize: 13,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1,
+      color: C.text
+    }
+  }, c), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: C.pink,
+      fontWeight: 500
+    }
+  }, singerA.slice(0, 2), " ", comparison.composersA[c]), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: C.blue,
+      fontWeight: 500
+    }
+  }, singerB.slice(0, 2), " ", comparison.composersB[c]))))), /*#__PURE__*/React.createElement("div", {
+    style: isMobile ? {} : {
+      display: "flex",
+      gap: 16
+    }
+  }, comparison.onlyA.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: C.pink,
+      marginBottom: 8
+    }
+  }, "僅 ", singerA, "（", comparison.onlyA.length, "）"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      background: C.white,
+      maxHeight: 200,
+      overflowY: "auto"
+    }
+  }, comparison.onlyA.slice(0, 30).map(c => /*#__PURE__*/React.createElement("div", {
+    key: c,
+    style: {
+      padding: "6px 12px",
+      borderBottom: `1px solid ${C.border}`,
+      fontSize: 12,
+      display: "flex",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.text
+    }
+  }, c), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.textLight
+    }
+  }, comparison.composersA[c]))), comparison.onlyA.length > 30 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 8,
+      textAlign: "center",
+      color: C.textLight,
+      fontSize: 11
+    }
+  }, "…及其他 ", comparison.onlyA.length - 30, " 位"))), comparison.onlyB.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: C.blue,
+      marginBottom: 8
+    }
+  }, "僅 ", singerB, "（", comparison.onlyB.length, "）"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      background: C.white,
+      maxHeight: 200,
+      overflowY: "auto"
+    }
+  }, comparison.onlyB.slice(0, 30).map(c => /*#__PURE__*/React.createElement("div", {
+    key: c,
+    style: {
+      padding: "6px 12px",
+      borderBottom: `1px solid ${C.border}`,
+      fontSize: 12,
+      display: "flex",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.text
+    }
+  }, c), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.textLight
+    }
+  }, comparison.composersB[c]))), comparison.onlyB.length > 30 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 8,
+      textAlign: "center",
+      color: C.textLight,
+      fontSize: 11
+    }
+  }, "…及其他 ", comparison.onlyB.length - 30, " 位"))))));
+}
+
+// ============================================================
+// Tab: 統計 (with clickable names)
 // ============================================================
 function TabStats({
   data,
-  index
+  index,
+  onNavigate
 }) {
   const topSingers = useMemo(() => sortedEntries(index.singers).slice(0, 20), [index.singers]);
   const topComposers = useMemo(() => sortedEntries(index.composers).slice(0, 20), [index.composers]);
@@ -1250,8 +1893,10 @@ function TabStats({
       alignItems: "center",
       gap: 10,
       padding: "6px 12px",
-      borderBottom: `1px solid ${C.border}`
-    }
+      borderBottom: `1px solid ${C.border}`,
+      cursor: onNavigate ? "pointer" : "default"
+    },
+    onClick: () => onNavigate && onNavigate("singer", name)
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       color: C.textLight,
@@ -1263,7 +1908,7 @@ function TabStats({
     style: {
       flex: 1,
       fontSize: 13,
-      color: C.text
+      color: onNavigate ? C.link : C.text
     }
   }, name), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1299,8 +1944,10 @@ function TabStats({
       alignItems: "center",
       gap: 10,
       padding: "6px 12px",
-      borderBottom: `1px solid ${C.border}`
-    }
+      borderBottom: `1px solid ${C.border}`,
+      cursor: onNavigate ? "pointer" : "default"
+    },
+    onClick: () => onNavigate && onNavigate("composer", name)
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       color: C.textLight,
@@ -1312,7 +1959,7 @@ function TabStats({
     style: {
       flex: 1,
       fontSize: 13,
-      color: C.text
+      color: onNavigate ? C.link : C.text
     }
   }, name), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1388,7 +2035,8 @@ const sectionTitle = {
 // Global Search
 // ============================================================
 function GlobalSearch({
-  data
+  data,
+  onNavigate
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -1399,6 +2047,11 @@ function GlobalSearch({
       i
     })).filter(s => matchQuery(s.t, q.trim()) || matchQuery(s.s, q.trim()) || matchQuery(s.c, q.trim())).slice(0, 30);
   }, [q, data]);
+  const handleClick = song => {
+    setOpen(false);
+    setQ("");
+    if (onNavigate) onNavigate("singer", song.s);
+  };
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "relative",
@@ -1427,11 +2080,11 @@ function GlobalSearch({
     }
   }, results.map(s => /*#__PURE__*/React.createElement("div", {
     key: s.i,
-    onClick: () => setOpen(false),
+    onClick: () => handleClick(s),
     style: {
       padding: "8px 14px",
       borderBottom: `1px solid ${C.border}`,
-      cursor: "default",
+      cursor: "pointer",
       fontSize: 13
     },
     onMouseEnter: e => e.currentTarget.style.background = C.cardHover,
@@ -1441,13 +2094,22 @@ function GlobalSearch({
       color: C.text,
       fontWeight: 500
     }
-  }, s.t), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Highlight, {
+    text: s.t,
+    query: q.trim()
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       color: C.textMid,
       fontSize: 12,
       marginTop: 2
     }
-  }, s.s, " · ", s.y, s.c ? ` · 曲：${s.c}` : "", s.r && SOURCE_LABELS[s.r] && /*#__PURE__*/React.createElement(Tag, {
+  }, /*#__PURE__*/React.createElement(Highlight, {
+    text: s.s,
+    query: q.trim()
+  }), " · ", s.y, s.c ? /*#__PURE__*/React.createElement(React.Fragment, null, " · 曲：", /*#__PURE__*/React.createElement(Highlight, {
+    text: s.c,
+    query: q.trim()
+  })) : "", s.r && SOURCE_LABELS[s.r] && /*#__PURE__*/React.createElement(Tag, {
     label: SOURCE_LABELS[s.r].label,
     color: SOURCE_LABELS[s.r].color
   }))))), open && q.trim() && results.length === 0 && /*#__PURE__*/React.createElement("div", {
@@ -1479,11 +2141,11 @@ const SPLASH_IMG = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEB
 const GUIDE_SECTIONS = [{
   icon: "⌕",
   title: "全局搜索",
-  desc: "頂部搜索框可按歌名、歌手、作曲人搜索，支持簡體輸入匹配繁體數據"
+  desc: "頂部搜索框可按歌名、歌手、作曲人搜索，支持簡體輸入。點擊結果跳轉至該歌手頁面"
 }, {
   icon: "🎤",
   title: "按歌手",
-  desc: "左側選擇歌手，右側顯示該歌手所有粵語作品及作曲 credits"
+  desc: "選擇歌手，查看其所有粵語作品及作曲 credits"
 }, {
   icon: "🎹",
   title: "按作曲",
@@ -1491,19 +2153,23 @@ const GUIDE_SECTIONS = [{
 }, {
   icon: "📅",
   title: "按年份",
-  desc: "按年份瀏覽，查看林夕每年的創作產量和合作對象"
+  desc: "按年份瀏覽林夕每年的創作產量和合作對象"
 }, {
   icon: "🔀",
   title: "交叉查詢",
-  desc: "同時選擇歌手和作曲人，查看特定搭檔的合作歌曲。常見人名可直接點選，其他可搜索"
+  desc: "同時選擇歌手和作曲人，查看特定搭檔的合作歌曲"
+}, {
+  icon: "⚖️",
+  title: "歌手對比",
+  desc: "選兩位歌手，對比共同作曲人和各自獨有的作曲人"
 }, {
   icon: "📊",
   title: "統計",
-  desc: "歌手 / 作曲人排行、年度產量圖表、外國作曲來源分佈"
+  desc: "排行榜（可點擊跳轉）、年度產量圖表、外國作曲來源"
 }, {
   icon: "🔗",
   title: "交叉導航",
-  desc: "歌曲列表中的歌手名、作曲人名、年份均可點擊，跳轉查看該人或該年的全部作品，面包屑路徑可隨時回退"
+  desc: "歌曲列表中歌手名、作曲人名、年份均可點擊跳轉，面包屑可回退"
 }];
 function GuideModal({
   onClose
@@ -1624,10 +2290,71 @@ function GuideModal({
 // App
 // ============================================================
 const GUIDE_SEEN_KEY = "linxi-guide-seen";
+
+// ============================================================
+// URL Hash Routing
+// ============================================================
+function parseHash() {
+  try {
+    const h = window.location.hash.slice(1); // remove #
+    if (!h) return {};
+    const params = {};
+    h.split("&").forEach(part => {
+      const [k, v] = part.split("=");
+      if (k && v) params[decodeURIComponent(k)] = decodeURIComponent(v);
+    });
+    return params;
+  } catch (e) {
+    return {};
+  }
+}
+function writeHash(params) {
+  try {
+    const parts = Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+    const h = parts.join("&");
+    if (window.location.hash.slice(1) !== h) {
+      window.history.replaceState(null, "", h ? `#${h}` : window.location.pathname);
+    }
+  } catch (e) {}
+}
 function App() {
-  const [tab, setTab] = useState("singer");
+  // Init tab from hash
+  const initHash = useMemo(() => parseHash(), []);
+  const validTabs = TABS.map(t => t.id);
+  const [tab, setTab] = useState(() => {
+    return initHash.tab && validTabs.includes(initHash.tab) ? initHash.tab : "singer";
+  });
   const data = useMemo(() => DATA, []);
   const index = useMemo(() => buildIndex(data), [data]);
+
+  // Jump-to: from hash, GlobalSearch, or Stats
+  const [jumpTo, setJumpTo] = useState(() => {
+    if (initHash.s && (initHash.tab === "singer" || !initHash.tab)) return {
+      type: "singer",
+      name: initHash.s
+    };
+    if (initHash.c && initHash.tab === "composer") return {
+      type: "composer",
+      name: initHash.c
+    };
+    return null;
+  });
+  const handleGlobalNavigate = useCallback((type, name) => {
+    if (type === "singer" || type === "composer") {
+      setTab(type);
+      setJumpTo({
+        type,
+        name
+      });
+    }
+  }, []);
+
+  // Write hash when tab changes
+  useEffect(() => {
+    writeHash({
+      tab
+    });
+  }, [tab]);
 
   // Guide modal: show on first visit, remember dismissal
   const [showGuide, setShowGuide] = useState(() => {
@@ -1644,6 +2371,7 @@ function App() {
     } catch (e) {}
   }, []);
   const openGuide = useCallback(() => setShowGuide(true), []);
+  const [isDark, toggleTheme, themeKey] = useTheme();
   if (data.length === 0) return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: 40,
@@ -1652,6 +2380,7 @@ function App() {
     }
   }, "載入中…");
   return /*#__PURE__*/React.createElement("div", {
+    key: themeKey,
     style: {
       maxWidth: 960,
       margin: "0 auto",
@@ -1682,7 +2411,27 @@ function App() {
       color: C.textLight,
       marginTop: 4
     }
-  }, data.length, " 首 · 1985–2026 · Credits 查詢")), /*#__PURE__*/React.createElement("button", {
+  }, data.length, " 首 · 1985–2026 · Credits 查詢")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: toggleTheme,
+    title: isDark ? "淺色模式" : "深色模式",
+    style: {
+      background: "none",
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      padding: "6px 10px",
+      cursor: "pointer",
+      color: C.textMid,
+      fontSize: 15,
+      fontFamily: "inherit",
+      transition: "all .15s",
+      lineHeight: 1
+    }
+  }, isDark ? "☀️" : "🌙"), /*#__PURE__*/React.createElement("button", {
     onClick: openGuide,
     title: "使用指南",
     style: {
@@ -1698,21 +2447,14 @@ function App() {
       alignItems: "center",
       gap: 4,
       transition: "all .15s"
-    },
-    onMouseEnter: e => {
-      e.currentTarget.style.borderColor = C.accent;
-      e.currentTarget.style.color = C.text;
-    },
-    onMouseLeave: e => {
-      e.currentTarget.style.borderColor = C.border;
-      e.currentTarget.style.color = C.textMid;
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 15
     }
-  }, "?"), /*#__PURE__*/React.createElement("span", null, "指南"))), /*#__PURE__*/React.createElement(GlobalSearch, {
-    data: data
+  }, "?"), /*#__PURE__*/React.createElement("span", null, "指南")))), /*#__PURE__*/React.createElement(GlobalSearch, {
+    data: data,
+    onNavigate: handleGlobalNavigate
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -1740,19 +2482,27 @@ function App() {
     }
   }, t.label))), tab === "singer" && /*#__PURE__*/React.createElement(TabSinger, {
     data: data,
-    index: index
+    index: index,
+    jumpTo: jumpTo && jumpTo.type === "singer" ? jumpTo : null,
+    clearJump: () => setJumpTo(null)
   }), tab === "composer" && /*#__PURE__*/React.createElement(TabComposer, {
     data: data,
-    index: index
+    index: index,
+    jumpTo: jumpTo && jumpTo.type === "composer" ? jumpTo : null,
+    clearJump: () => setJumpTo(null)
   }), tab === "year" && /*#__PURE__*/React.createElement(TabYear, {
     data: data,
     index: index
   }), tab === "cross" && /*#__PURE__*/React.createElement(TabCross, {
     data: data,
     index: index
-  }), tab === "stats" && /*#__PURE__*/React.createElement(TabStats, {
+  }), tab === "compare" && /*#__PURE__*/React.createElement(TabCompare, {
     data: data,
     index: index
+  }), tab === "stats" && /*#__PURE__*/React.createElement(TabStats, {
+    data: data,
+    index: index,
+    onNavigate: handleGlobalNavigate
   }), showGuide && /*#__PURE__*/React.createElement(GuideModal, {
     onClose: closeGuide
   }));
