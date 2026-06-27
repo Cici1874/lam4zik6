@@ -1133,7 +1133,8 @@ function PillSelector({
   items,
   selected,
   onSelect,
-  index
+  index,
+  countOverride
 }) {
   const isMobile = useIsMobile();
   const [expanded, setExpanded] = useState(false);
@@ -1149,7 +1150,8 @@ function PillSelector({
     }
   }, visible.map(name => {
     const isActive = selected === name;
-    const count = index[name] ? index[name].length : 0;
+    const count = countOverride ? countOverride[name] || 0 : index[name] ? index[name].length : 0;
+    const dimmed = countOverride && count === 0 && !isActive;
     return /*#__PURE__*/React.createElement("button", {
       key: name,
       onClick: () => onSelect(isActive ? null : name),
@@ -1164,7 +1166,8 @@ function PillSelector({
         fontFamily: "inherit",
         transition: "all .15s",
         fontWeight: isActive ? 600 : 400,
-        whiteSpace: "nowrap"
+        whiteSpace: "nowrap",
+        opacity: dimmed ? 0.35 : 1
       }
     }, name, /*#__PURE__*/React.createElement("span", {
       style: {
@@ -1252,6 +1255,30 @@ function TabCross({
     if (composerSet) return [...composerSet];
     return null;
   }, [singer, composer, index]);
+
+  // When a singer is selected, compute how many songs each composer has WITH that singer
+  const composerCrossCount = useMemo(() => {
+    if (!singer) return null;
+    const singerSongs = index.singers[singer] || [];
+    const counts = {};
+    singerSongs.forEach(i => {
+      const c = data[i].c;
+      if (c) counts[c] = (counts[c] || 0) + 1;
+    });
+    return counts;
+  }, [singer, data, index]);
+
+  // When a composer is selected, compute how many songs each singer has WITH that composer
+  const singerCrossCount = useMemo(() => {
+    if (!composer) return null;
+    const composerSongs = index.composers[composer] || [];
+    const counts = {};
+    composerSongs.forEach(i => {
+      const s = data[i].s;
+      if (s) counts[s] = (counts[s] || 0) + 1;
+    });
+    return counts;
+  }, [composer, data, index]);
   const selectSinger = name => {
     setSinger(name === singer ? null : name);
     setSingerQ(name || "");
@@ -1346,7 +1373,8 @@ function TabCross({
     items: HOT_SINGERS,
     selected: singer,
     onSelect: selectSinger,
-    index: index.singers
+    index: index.singers,
+    countOverride: singerCrossCount
   }) : /*#__PURE__*/React.createElement("div", {
     style: {
       position: "relative"
@@ -1430,7 +1458,8 @@ function TabCross({
     items: HOT_COMPOSERS,
     selected: composer,
     onSelect: selectComposer,
-    index: index.composers
+    index: index.composers,
+    countOverride: composerCrossCount
   }) : /*#__PURE__*/React.createElement("div", {
     style: {
       position: "relative"
@@ -2289,6 +2318,147 @@ function GuideModal({
 // App
 // ============================================================
 const GUIDE_SEEN_KEY = "linxi-guide-seen";
+const UPDATE_LOG_KEY = "linxi-update-seen";
+const APP_VERSION = "2.1.0";
+const UPDATE_LOG = [{
+  version: "2.1.0",
+  date: "2026-06-27",
+  items: ["交叉查詢動態聯動：選歌手後作曲人數字自動更新為合作數", "合作數為 0 的 pill 半透明顯示"]
+}, {
+  version: "2.0.0",
+  date: "2026-06-27",
+  items: ["手機端歌曲列表改為卡片佈局", "全局搜索點擊跳轉至歌手頁", "新增「歌手對比」功能", "搜索結果高亮匹配文字", "統計排行榜可點擊跳轉", "URL hash 路由，可分享鏈接", "深色模式 🌙", "歌曲列表「複製」導出功能"]
+}, {
+  version: "1.2.0",
+  date: "2026-06-27",
+  items: ["交叉導航：歌手名、作曲人名、年份均可點擊跳轉", "面包屑路徑支持無限深度", "手機端響應式佈局"]
+}, {
+  version: "1.1.0",
+  date: "2026-06-27",
+  items: ["繁簡互通搜索", "交叉查詢 pill 選擇器（常見/其他切換）"]
+}, {
+  version: "1.0.0",
+  date: "2026-06-26",
+  items: ["首版上線：按歌手、按作曲、按年份、交叉查詢、統計五大功能", "收錄林夕 2764 首粵語填詞作品"]
+}];
+function UpdateLogModal({
+  onClose
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 1000,
+      background: "rgba(74,70,64,0.5)",
+      backdropFilter: "blur(4px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    },
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.bg,
+      borderRadius: 16,
+      maxWidth: 440,
+      width: "100%",
+      maxHeight: "80vh",
+      overflowY: "auto",
+      boxShadow: "0 20px 60px rgba(74,70,64,0.3)",
+      padding: 0
+    },
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "20px 24px 12px"
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 18,
+      fontWeight: 700,
+      color: C.text,
+      margin: 0
+    }
+  }, "更新日誌"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.textMid,
+      marginTop: 4
+    }
+  }, "當前版本 v", APP_VERSION)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "0 24px 16px"
+    }
+  }, UPDATE_LOG.map((log, li) => /*#__PURE__*/React.createElement("div", {
+    key: log.version,
+    style: {
+      marginBottom: li < UPDATE_LOG.length - 1 ? 16 : 0,
+      paddingBottom: li < UPDATE_LOG.length - 1 ? 16 : 0,
+      borderBottom: li < UPDATE_LOG.length - 1 ? `1px solid ${C.border}` : "none"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "baseline",
+      gap: 8,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      color: li === 0 ? C.accent : C.textMid
+    }
+  }, "v", log.version), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: C.textLight
+    }
+  }, log.date), li === 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      padding: "1px 6px",
+      borderRadius: 4,
+      background: C.accent,
+      color: C.white,
+      fontWeight: 600
+    }
+  }, "NEW")), log.items.map((item, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      fontSize: 12,
+      color: C.text,
+      lineHeight: 1.6,
+      paddingLeft: 12,
+      position: "relative"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      position: "absolute",
+      left: 0,
+      color: C.textLight
+    }
+  }, "·"), item))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "4px 24px 20px",
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      padding: "10px 40px",
+      borderRadius: 20,
+      border: "none",
+      background: C.accent,
+      color: C.white,
+      fontSize: 14,
+      fontWeight: 600,
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, "知道了"))));
+}
 
 // ============================================================
 // URL Hash Routing
@@ -2355,7 +2525,7 @@ function App() {
     });
   }, [tab]);
 
-  // Guide modal: show on first visit, remember dismissal
+  // Guide modal: show on first visit
   const [showGuide, setShowGuide] = useState(() => {
     try {
       return !localStorage.getItem(GUIDE_SEEN_KEY);
@@ -2370,6 +2540,34 @@ function App() {
     } catch (e) {}
   }, []);
   const openGuide = useCallback(() => setShowGuide(true), []);
+
+  // Update log: show when version changes (not on first visit — guide handles that)
+  const [showUpdateLog, setShowUpdateLog] = useState(() => {
+    try {
+      const seen = localStorage.getItem(UPDATE_LOG_KEY);
+      const isFirstVisit = !localStorage.getItem(GUIDE_SEEN_KEY);
+      // Don't show update log on first visit (guide is enough)
+      if (isFirstVisit) return false;
+      return seen !== APP_VERSION;
+    } catch (e) {
+      return false;
+    }
+  });
+  const closeUpdateLog = useCallback(() => {
+    setShowUpdateLog(false);
+    try {
+      localStorage.setItem(UPDATE_LOG_KEY, APP_VERSION);
+    } catch (e) {}
+  }, []);
+  const openUpdateLog = useCallback(() => setShowUpdateLog(true), []);
+
+  // Also mark update log as seen when guide is closed on first visit
+  const closeGuideFirst = useCallback(() => {
+    closeGuide();
+    try {
+      localStorage.setItem(UPDATE_LOG_KEY, APP_VERSION);
+    } catch (e) {}
+  }, [closeGuide]);
   const [isDark, toggleTheme, themeKey] = useTheme();
   if (data.length === 0) return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2431,6 +2629,20 @@ function App() {
       lineHeight: 1
     }
   }, isDark ? "☀️" : "🌙"), /*#__PURE__*/React.createElement("button", {
+    onClick: openUpdateLog,
+    title: "更新日誌",
+    style: {
+      background: "none",
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      padding: "6px 10px",
+      cursor: "pointer",
+      color: C.textMid,
+      fontSize: 11,
+      fontFamily: "inherit",
+      transition: "all .15s"
+    }
+  }, "v", APP_VERSION), /*#__PURE__*/React.createElement("button", {
     onClick: openGuide,
     title: "使用指南",
     style: {
@@ -2503,7 +2715,9 @@ function App() {
     index: index,
     onNavigate: handleGlobalNavigate
   }), showGuide && /*#__PURE__*/React.createElement(GuideModal, {
-    onClose: closeGuide
+    onClose: closeGuideFirst
+  }), showUpdateLog && /*#__PURE__*/React.createElement(UpdateLogModal, {
+    onClose: closeUpdateLog
   }));
 }
 const root = ReactDOM.createRoot(document.getElementById("root"));
